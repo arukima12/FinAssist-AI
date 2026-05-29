@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# FinAssist AI 📊🤖
 
-## Getting Started
+FinAssist AI is a production-ready, fully local Retrieval-Augmented Generation (RAG) application engineered to parse, embed, and analyze complex financial documents (like 10-K filings, earnings reports, and financial statements). By leveraging state-of-the-art document layout analysis and local reasoning LLMs, FinAssist AI provides accurate, context-aware financial insights without exposing sensitive data to external cloud APIs.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🚀 Key Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*   **Intelligent Document Parsing:** Utilizes **Docling** to accurately parse complex financial PDFs, maintaining structural integrity across tables, headers, and multi-column layouts.
+*   **Local Privacy & Reasoning:** Powered by **DeepSeek-R1** running locally, delivering high-tier financial reasoning and mathematical verification safely on your own hardware.
+*   **Vector Search Pipeline:** Uses **ChromaDB** for efficient, local vector storage and semantic similarity search.
+*   **Real-time Streaming UI:** Features a modern, ultra-responsive **Next.js** frontend with token-by-token streaming responses via a custom FastAPI pipeline.
+*   **Modular Architecture:** Cleanly separated into standalone `backend` and `frontend` microservices.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Tech Stack
 
-## Learn More
+### Backend
+*   **Framework:** FastAPI (Python 3.10+)
+*   **Parsing:** Docling (IBM)
+*   **LLM & Orchestration:** DeepSeek-R1 (via Ollama / local inference)
+*   **Vector Database:** ChromaDB
+*   **Embeddings:** HuggingFace / SentenceTransformers
 
-To learn more about Next.js, take a look at the following resources:
+### Frontend
+*   **Framework:** Next.js (App Router)
+*   **Styling:** Tailwind CSS
+*   **State Management:** React Hooks
+*   **Streaming API handling:** Native Fetch / ReadableStreams
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📁 Repository Structure
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+finassist-ai/
+├── backend/
+│   ├── app/
+│   │   ├── main.py          # FastAPI application entrypoint
+│   │   ├── parser.py        # Docling document processing engine
+│   │   ├── vector_store.py  # ChromaDB integration & embeddings
+│   │   └── llm_chain.py     # DeepSeek-R1 streaming query pipeline
+│   ├── requirements.txt     # Python dependencies
+│   └── .env.example         # Backend environment configuration
+├── frontend/
+│   ├── app/                 # Next.js App Router (pages & layout)
+│   ├── components/          # Reusable UI components (Chat, Upload, Navbar)
+│   ├── package.json         # Node.js dependencies
+│   └── .env.example         # Frontend environment configuration
+└── README.md                # Project documentation
