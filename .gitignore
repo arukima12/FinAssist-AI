@@ -1,0 +1,18 @@
+# Dependency directories
+node_modules/
+frontend/node_modules/
+dist/
+.next/
+out/
+
+# Python Virtual Environment
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Local Vector Database Binaries
+backend/chroma_db/
+
+# Environmental local flags
+.env
+.env.local
