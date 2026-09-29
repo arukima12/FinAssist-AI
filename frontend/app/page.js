@@ -21,14 +21,22 @@ import {
   ExternalLink,
   BookOpen,
   Sun,
-  Moon
+  Moon,
+  Settings,
+  Link2,
+  AlertCircle
 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function Home() {
   // Theme State (Default: light or dark based on system / preference)
   const [theme, setTheme] = useState("light");
+
+  // Backend API URL State (configurable directly in UI or loaded from localStorage)
+  const [apiUrl, setApiUrl] = useState(DEFAULT_API_BASE);
+  const [showConfig, setShowConfig] = useState(false);
+  const [tempUrl, setTempUrl] = useState("");
 
   // System & Health State
   const [health, setHealth] = useState(null);
@@ -91,28 +99,35 @@ export default function Home() {
   }, [messages]);
 
   useEffect(() => {
-    fetchHealth();
-    fetchDocuments();
-    const interval = setInterval(fetchHealth, 15000);
+    const savedUrl = localStorage.getItem("finassist_api_url") || DEFAULT_API_BASE;
+    setApiUrl(savedUrl);
+    fetchHealth(savedUrl);
+    fetchDocuments(savedUrl);
+    const interval = setInterval(() => {
+      const activeUrl = localStorage.getItem("finassist_api_url") || DEFAULT_API_BASE;
+      fetchHealth(activeUrl);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchHealth = async () => {
+  const fetchHealth = async (targetUrl = apiUrl) => {
     try {
-      const res = await fetch(`${API_BASE}/api/health`);
+      const res = await fetch(`${targetUrl}/api/health`);
       if (res.ok) {
         const data = await res.json();
         setHealth(data);
+      } else {
+        setHealth(null);
       }
     } catch {
       setHealth(null);
     }
   };
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (targetUrl = apiUrl) => {
     setLoadingDocs(true);
     try {
-      const res = await fetch(`${API_BASE}/api/documents`);
+      const res = await fetch(`${targetUrl}/api/documents`);
       if (res.ok) {
         const data = await res.json();
         setDocuments(data.documents || []);
@@ -122,6 +137,16 @@ export default function Home() {
     } finally {
       setLoadingDocs(false);
     }
+  };
+
+  const saveApiUrl = (newUrl) => {
+    const clean = (newUrl || "").trim().replace(/\/$/, "");
+    if (!clean) return;
+    setApiUrl(clean);
+    localStorage.setItem("finassist_api_url", clean);
+    setShowConfig(false);
+    fetchHealth(clean);
+    fetchDocuments(clean);
   };
 
   // --- MULTI-FORMAT FILE UPLOAD ---
@@ -137,7 +162,7 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/upload`, {
+      const res = await fetch(`${apiUrl}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -160,7 +185,7 @@ export default function Home() {
     } catch {
       setUploadStatus({
         type: "error",
-        message: "Server unreachable. Please verify backend service status."
+        message: `Server at ${apiUrl} unreachable. Please verify backend status.`
       });
     } finally {
       setUploading(false);
@@ -188,7 +213,7 @@ export default function Home() {
 
   const handleDeleteDoc = async (docId) => {
     try {
-      const res = await fetch(`${API_BASE}/api/documents/${docId}`, {
+      const res = await fetch(`${apiUrl}/api/documents/${docId}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -203,7 +228,7 @@ export default function Home() {
   const handleClearAll = async () => {
     if (!confirm("Are you sure you want to clear all indexed documents and vector embeddings?")) return;
     try {
-      await fetch(`${API_BASE}/api/clear`, { method: "POST" });
+      await fetch(`${apiUrl}/api/clear`, { method: "POST" });
       fetchDocuments();
       fetchHealth();
       setMessages([]);
@@ -253,7 +278,7 @@ export default function Home() {
     setIsStreaming(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/query`, {
+      const res = await fetch(`${apiUrl}/api/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -319,7 +344,7 @@ export default function Home() {
         const updated = [...prev];
         const last = updated[updated.length - 1];
         if (last && last.sender === "ai") {
-          last.text = "Connection interrupted. Check backend service status.";
+          last.text = `Connection failed to backend at "${apiUrl}". If your backend is hosted on Render, click the Settings icon in the sidebar to configure your backend URL.`;
           last.isStreaming = false;
         }
         return updated;
@@ -412,6 +437,14 @@ export default function Home() {
               </button>
 
               <button
+                onClick={() => { setTempUrl(apiUrl); setShowConfig(true); }}
+                title="Configure Backend URL"
+                className="p-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-md transition-colors"
+              >
+                <Settings className="h-4 w-4 stroke-[2]" />
+              </button>
+
+              <button
                 onClick={handleNewChat}
                 title="Reset Session"
                 className="p-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-md transition-colors"
@@ -443,6 +476,37 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* DISCONNECTED WARNING / ACTIVE TARGET BADGE */}
+          {!health ? (
+            <div className="mt-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300">
+              <div className="flex items-center justify-between font-medium">
+                <span className="flex items-center space-x-1">
+                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Backend Offline</span>
+                </span>
+                <button
+                  onClick={() => { setTempUrl(apiUrl); setShowConfig(true); }}
+                  className="underline text-[10px] font-semibold hover:opacity-80"
+                >
+                  Connect Render
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400 truncate font-mono">
+                Target: {apiUrl}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex items-center justify-between text-[10px] text-zinc-400 dark:text-zinc-500 px-1 font-mono">
+              <span className="truncate max-w-[190px]">Target: {apiUrl}</span>
+              <button
+                onClick={() => { setTempUrl(apiUrl); setShowConfig(true); }}
+                className="hover:text-zinc-600 dark:hover:text-zinc-300 underline font-sans"
+              >
+                Change
+              </button>
+            </div>
+          )}
         </div>
 
         {/* UPLOAD & DOCUMENT LIST */}
@@ -592,7 +656,9 @@ export default function Home() {
             <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800" />
             <div className="text-[11px] text-zinc-500 dark:text-zinc-400 hidden sm:flex items-center space-x-1">
               <span>Model:</span>
-              <span className="font-medium text-zinc-900 dark:text-zinc-200">DeepSeek-R1 (1.5B)</span>
+              <span className="font-medium text-zinc-900 dark:text-zinc-200">
+                {health?.target_llm || health?.ollama?.target_llm || "DeepSeek-R1"}
+              </span>
             </div>
           </div>
 
@@ -830,6 +896,63 @@ export default function Home() {
         </div>
 
       </main>
+
+      {/* CONFIGURE BACKEND API URL MODAL */}
+      {showConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 w-full max-w-md shadow-xl text-zinc-950 dark:text-zinc-50 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center space-x-2">
+                <Link2 className="h-4 w-4" />
+                <span>Configure Backend API URL</span>
+              </h3>
+              <button
+                onClick={() => setShowConfig(false)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3 leading-relaxed">
+              Paste your Render backend URL (e.g. <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-[11px] text-zinc-800 dark:text-zinc-200">https://finassist-backend.onrender.com</span>) to connect this frontend to your cloud service.
+            </p>
+            <input
+              type="text"
+              value={tempUrl}
+              onChange={(e) => setTempUrl(e.target.value)}
+              placeholder="https://your-service.onrender.com"
+              className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 mb-4"
+            />
+            <div className="flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setTempUrl("http://localhost:8000");
+                }}
+                className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline"
+              >
+                Reset to Localhost
+              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfig(false)}
+                  className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveApiUrl(tempUrl)}
+                  className="px-3.5 py-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-950 font-medium hover:opacity-90 shadow-xs transition-opacity"
+                >
+                  Connect & Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
