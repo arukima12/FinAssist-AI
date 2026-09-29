@@ -425,11 +425,11 @@ export default function Home() {
           <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 shadow-xs">
               <div className="flex items-center space-x-1.5 mb-0.5">
-                <span className={`h-2 w-2 rounded-full ${health?.ollama?.online ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                <span className={`h-2 w-2 rounded-full ${health?.ollama?.online || health?.provider_online || health?.status === "healthy" ? "bg-emerald-500" : "bg-zinc-400"}`} />
                 <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Model Engine</span>
               </div>
               <div className="font-semibold text-zinc-900 dark:text-zinc-200 truncate">
-                {health?.ollama?.target_llm || "DeepSeek-R1"}
+                {health?.target_llm || health?.ollama?.target_llm || "DeepSeek-R1"}
               </div>
             </div>
 

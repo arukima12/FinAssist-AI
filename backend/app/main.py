@@ -51,30 +51,54 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     """
-    Checks the status of local Ollama server and persistent ChromaDB store.
+    Checks the status of the active LLM provider (Groq cloud or Ollama local)
+    and the persistent ChromaDB vector store.
     """
-    ollama_online = False
-    ollama_models = []
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            if resp.status_code == 200:
-                ollama_online = True
-                ollama_models = [m.get("name") for m in resp.json().get("models", [])]
-    except Exception:
+    is_groq = settings.LLM_PROVIDER == "groq" or (bool(settings.GROQ_API_KEY) and settings.LLM_PROVIDER != "ollama")
+
+    provider_online = False
+    provider_name = "groq" if is_groq else "ollama"
+    target_llm = settings.GROQ_MODEL if is_groq else settings.LLM_MODEL
+    ollama_info = {}
+
+    if is_groq:
+        provider_online = bool(settings.GROQ_API_KEY)
+        ollama_info = {
+            "online": False,
+            "mode": "cloud_groq",
+            "target_llm": settings.GROQ_MODEL,
+            "target_embedding": settings.EMBEDDING_MODEL,
+            "api_key_configured": bool(settings.GROQ_API_KEY)
+        }
+    else:
         ollama_online = False
+        ollama_models = []
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
+                if resp.status_code == 200:
+                    ollama_online = True
+                    ollama_models = [m.get("name") for m in resp.json().get("models", [])]
+        except Exception:
+            ollama_online = False
 
-    stats = vector_store_manager.get_stats()
-
-    return {
-        "status": "healthy" if ollama_online else "degraded",
-        "ollama": {
+        provider_online = ollama_online
+        ollama_info = {
             "online": ollama_online,
             "url": settings.OLLAMA_BASE_URL,
             "target_llm": settings.LLM_MODEL,
             "target_embedding": settings.EMBEDDING_MODEL,
             "available_models": ollama_models
-        },
+        }
+
+    stats = vector_store_manager.get_stats()
+
+    return {
+        "status": "healthy" if provider_online else "degraded",
+        "provider": provider_name,
+        "provider_online": provider_online,
+        "target_llm": target_llm,
+        "ollama": ollama_info,
         "vector_store": stats
     }
 
