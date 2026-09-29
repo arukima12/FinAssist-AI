@@ -28,19 +28,24 @@ class LocalOllamaEmbeddings(Embeddings):
         return self._onnx_fallback
 
     def _embed_single(self, text: str) -> List[float]:
-        try:
-            req = urllib.request.Request(
-                f"{self.base_url}/api/embeddings",
-                data=json.dumps({"model": self.model, "prompt": text}).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data["embedding"]
-        except Exception:
-            # Fallback to local ONNX in-process model if Ollama request fails
-            fallback = self._get_onnx_fallback()
-            return fallback([text])[0]
+        # If in cloud mode (Groq configured), skip Ollama immediately to prevent blocking
+        is_cloud = settings.LLM_PROVIDER == "groq" or (bool(settings.GROQ_API_KEY) and settings.LLM_PROVIDER != "ollama")
+        if not is_cloud:
+            try:
+                req = urllib.request.Request(
+                    f"{self.base_url}/api/embeddings",
+                    data=json.dumps({"model": self.model, "prompt": text}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=1.5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data["embedding"]
+            except Exception:
+                pass
+
+        # Fast in-process ONNX model for embeddings
+        fallback = self._get_onnx_fallback()
+        return fallback([text])[0]
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         return [self._embed_single(t) for t in texts]
@@ -86,6 +91,12 @@ class VectorStoreManager:
         """
         Performs semantic similarity search with score calculation and source tagging.
         """
+        try:
+            if self.collection.count() == 0:
+                return []
+        except Exception:
+            pass
+
         filter_dict = {"doc_id": doc_id} if doc_id else None
         
         try:

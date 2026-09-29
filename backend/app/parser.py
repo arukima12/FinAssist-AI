@@ -5,9 +5,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple
 import pandas as pd
 
-from docling.datamodel.base_models import InputFormat
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import PdfPipelineOptions
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -17,25 +14,38 @@ class DocumentParser:
     """
     Enterprise multi-format document parser.
     Specialized for dense financial and legal layouts (PDFs, DOCX, XLSX, CSV, TXT).
+    Features lazy model loading to ensure instant startup and fit inside 512MB cloud environments.
     """
 
     def __init__(self):
-        # Configure Docling with optimized CPU pipeline options
-        # Table structure extraction enabled, heavy OCR disabled for fast offline processing
-        pipeline_options = PdfPipelineOptions()
-        pipeline_options.do_ocr = False
-        pipeline_options.do_table_structure = True
-
-        self.docling_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-            }
-        )
+        self._docling_converter = None
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
             separators=["\n## ", "\n### ", "\n\n", "\n|", "\n", " ", ""]
         )
+
+    def _get_docling_converter(self):
+        """Lazy loader for Docling converter to save memory at startup."""
+        if self._docling_converter is None:
+            try:
+                from docling.datamodel.base_models import InputFormat
+                from docling.document_converter import DocumentConverter, PdfFormatOption
+                from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+                pipeline_options = PdfPipelineOptions()
+                pipeline_options.do_ocr = False
+                pipeline_options.do_table_structure = True
+
+                self._docling_converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                    }
+                )
+            except Exception as e:
+                print(f"[DocumentParser] Docling lazy load skipped (lightweight mode): {e}")
+                self._docling_converter = None
+        return self._docling_converter
 
     def parse_file(self, file_path: str, original_filename: str) -> Tuple[str, Dict[str, Any]]:
         """
@@ -55,19 +65,35 @@ class DocumentParser:
 
         extracted_markdown = ""
 
-        # 1. Financial & Legal PDFs via Docling
+        # 1. Financial & Legal PDFs via Docling with fallback
         if ext == ".pdf":
-            try:
-                result = self.docling_converter.convert(file_path)
-                extracted_markdown = result.document.export_to_markdown()
-                metadata["parser"] = "docling_pdf"
-            except Exception:
-                # Fallback to pypdfium2 if docling encounters specialized PDF errors
-                metadata["parser"] = "pypdfium2_fallback"
-                import pypdfium2 as pdfium
-                pdf = pdfium.PdfDocument(file_path)
-                text_pages = [page.get_textpage().get_text_range() for page in pdf]
-                extracted_markdown = "\n\n".join(text_pages)
+            converter = self._get_docling_converter()
+            if converter is not None:
+                try:
+                    result = converter.convert(file_path)
+                    extracted_markdown = result.document.export_to_markdown()
+                    metadata["parser"] = "docling_pdf"
+                except Exception as docling_err:
+                    print(f"[DocumentParser] Docling conversion failed: {docling_err}")
+                    extracted_markdown = ""
+
+            if not extracted_markdown:
+                # Fast, lightweight fallback for PDF text
+                metadata["parser"] = "pdf_text_fallback"
+                try:
+                    import pypdfium2 as pdfium
+                    pdf = pdfium.PdfDocument(file_path)
+                    text_pages = [page.get_textpage().get_text_range() for page in pdf]
+                    extracted_markdown = "\n\n".join(text_pages)
+                except Exception:
+                    try:
+                        import pypdf
+                        reader = pypdf.PdfReader(file_path)
+                        text_pages = [page.extract_text() or "" for page in reader.pages]
+                        extracted_markdown = "\n\n".join(text_pages)
+                    except Exception:
+                        with open(file_path, "rb") as f:
+                            extracted_markdown = f.read().decode("utf-8", errors="ignore")
 
         # 2. Financial Spreadsheets (XLSX, XLS, CSV)
         elif ext in [".xlsx", ".xls"]:
@@ -86,11 +112,16 @@ class DocumentParser:
 
         # 3. Word Documents (DOCX)
         elif ext == ".docx":
-            try:
-                result = self.docling_converter.convert(file_path)
-                extracted_markdown = result.document.export_to_markdown()
-                metadata["parser"] = "docling_docx"
-            except Exception:
+            converter = self._get_docling_converter()
+            if converter is not None:
+                try:
+                    result = converter.convert(file_path)
+                    extracted_markdown = result.document.export_to_markdown()
+                    metadata["parser"] = "docling_docx"
+                except Exception:
+                    extracted_markdown = ""
+
+            if not extracted_markdown:
                 import docx
                 doc = docx.Document(file_path)
                 paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
